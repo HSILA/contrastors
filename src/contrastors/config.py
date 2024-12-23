@@ -163,6 +163,7 @@ class ModelArgs(BaseModel):
     text_text_loss_weight: Optional[float] = 1.0
     ema: Optional[bool] = False
     patch_dropout: Optional[float] = 0.0
+    finetune_mlm: Optional[str] = None
 
     @field_validator('logit_scale')
     @classmethod

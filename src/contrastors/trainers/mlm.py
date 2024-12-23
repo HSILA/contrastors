@@ -37,7 +37,12 @@ class MLMTrainer(BaseTrainer):
         hf_config.attention_probs_dropout_prob = config.attn_pdrop
 
         model_config = bert_config_to_nomic_config(hf_config)
-        model = NomicBertForPreTraining(model_config)
+
+        if config.finetune_mlm is not None:
+            model = NomicBertForPreTraining.from_pretrained(config.finetune_mlm, 
+                                                            config=model_config)
+        else:
+            model = NomicBertForPreTraining(model_config)
 
         if config.gradient_checkpointing:
             model.gradient_checkpointing_enable()
