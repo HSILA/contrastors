@@ -245,10 +245,13 @@ def remap_bert_state_dict(
             word_embeddings, (0, 0, 0, config.vocab_size - word_embeddings.shape[0])
         )
         if not remove_cls_weights:
-            decoder_weight = state_dict["cls.predictions.decoder.weight"]
-            state_dict["cls.predictions.decoder.weight"] = F.pad(
-                decoder_weight, (0, 0, 0, config.vocab_size - decoder_weight.shape[0])
-            )
+            if "cls.predictions.decoder.weight" not in state_dict:
+                state_dict['cls.predictions.decoder.weight'] = state_dict['bert.embeddings.word_embeddings.weight'].clone()
+            else:
+                decoder_weight = state_dict["cls.predictions.decoder.weight"]
+                state_dict["cls.predictions.decoder.weight"] = F.pad(
+                    decoder_weight, (0, 0, 0, config.vocab_size - decoder_weight.shape[0])
+                )
             # If the vocab was padded, we want to set the decoder bias for those padded indices to be
             # strongly negative (i.e. the decoder shouldn't predict those indices).
             # TD [2022-05-09]: I don't think it affects the MLPerf training.
