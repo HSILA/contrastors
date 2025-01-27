@@ -77,6 +77,7 @@ class StreamingShardDataset(IterableDataset):
             self.rank = dist.get_rank()
             self.world_size = dist.get_world_size()
         else:
+            self.local_rank = 0
             self.rank = 0
             self.world_size = 1
 
@@ -118,7 +119,7 @@ class StreamingShardDataset(IterableDataset):
         for url in urls:
             # only keep the last two parts of the path
             # this assumes the path is in the form s3://bucket/dataset/file.jsonl.gz
-            normed = "/".join(url.split("/")[-3:])
+            normed = "/".join(url.split("/")[-3:]) if url.startswith("s3://") else url
             norm_urls.append(normed)
 
         return norm_urls
