@@ -17,7 +17,7 @@ def parser_args():
 args = parser_args()
 
 data_dir = Path(args.data_dir)
-base_dir = Path(args.base_dir)
+base_dir = args.base_dir
 
 files = sorted(data_dir.glob("shard-*.jsonl.gz"))
 
