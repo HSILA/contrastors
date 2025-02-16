@@ -164,8 +164,7 @@ class TextTextTrainer(BaseTrainer):
 
     def _grad_cache_forward_step(self, model, batch, logit_scale, **kwargs):
         # TODO: could pass this to grad cache loss and log?
-        batch.pop("dataset_name")
-        kwargs.pop("step")
+        dataset_name = batch.pop("dataset_name")
         batch = {k: v.to(model.device) for k, v in batch.items()}
         query_inputs = {k.replace("query_", ""): v for k, v in batch.items() if "query" in k}
         document_inputs = {k.replace("document_", ""): v for k, v in batch.items() if "document" in k}
@@ -176,6 +175,8 @@ class TextTextTrainer(BaseTrainer):
             t2_inputs=document_inputs,
             chunk_size=self.config.train_args.chunk_size,
             logit_scale=logit_scale,
+            tracker=self.tracker,
+            dataset=dataset_name,
             **kwargs,
         )
         return loss

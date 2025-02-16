@@ -1,10 +1,8 @@
 from contextlib import nullcontext
 
-import pandas as pd
 import torch
 import torch.distributed as dist
 import torch.nn.functional as F
-import wandb
 
 from contrastors.distributed import gather, gather_with_grad
 from contrastors.rand_state import RandContext
@@ -96,7 +94,17 @@ def accumulate_gradients(model, inputs, cache, rand_states):
             surrogate.backward()
 
 
-def cache_loss(tower1, tower2, query_embeddings, document_embeddings, logit_scale, bidirectional=False):
+def cache_loss(
+    tower1,
+    tower2,
+    query_embeddings,
+    document_embeddings,
+    logit_scale,
+    step=None,
+    tracker=None,
+    dataset="",
+    bidirectional=False,
+):
     # only require grad for embedding / representation
     query_embs = query_embeddings.detach().requires_grad_()
     document_embs = document_embeddings.detach().requires_grad_()
@@ -110,7 +118,16 @@ def cache_loss(tower1, tower2, query_embeddings, document_embeddings, logit_scal
     with torch.autocast("cuda", dtype=torch.bfloat16):
         with no_tower1_sync():
             with no_tower2_sync():
-                loss = clip_loss(query_embs, document_embs, logit_scale, gather_enabled=True, bidirectional=bidirectional)
+                loss = clip_loss(
+                    query_embs,
+                    document_embs,
+                    logit_scale,
+                    gather_enabled=True,
+                    step=step,
+                    tracker=tracker,
+                    dataset=dataset,
+                    bidirectional=bidirectional,
+                )
                 loss.backward()
 
     query_cache = query_embs.grad
@@ -119,7 +136,18 @@ def cache_loss(tower1, tower2, query_embeddings, document_embeddings, logit_scal
     return query_cache, document_cache, loss.detach()
 
 
-def grad_cache_loss(tower1, t1_inputs, tower2, t2_inputs, chunk_size, logit_scale, bidirectional=False):
+def grad_cache_loss(
+    tower1,
+    t1_inputs,
+    tower2,
+    t2_inputs,
+    chunk_size,
+    logit_scale,
+    step=None,
+    tracker=None,
+    dataset="",
+    bidirectional=False,
+):
     total_bs = t1_inputs["input_ids"].shape[0]
     chunked_queries = []
     chunked_documents = []
@@ -135,7 +163,15 @@ def grad_cache_loss(tower1, t1_inputs, tower2, t2_inputs, chunk_size, logit_scal
     document_embs, doc_rand_states = get_chunked_embeddings(tower2, chunked_documents)
 
     query_cache, document_cache, loss = cache_loss(
-        tower1, tower2, query_embs, document_embs, logit_scale, bidirectional=bidirectional
+        tower1,
+        tower2,
+        query_embs,
+        document_embs,
+        logit_scale,
+        step=step,
+        tracker=tracker,
+        dataset=dataset,
+        bidirectional=bidirectional,
     )
 
     chunked_query_cache = query_cache.split(chunk_size)
