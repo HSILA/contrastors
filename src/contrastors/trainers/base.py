@@ -315,7 +315,7 @@ class BaseTrainer(metaclass=ABCMeta):
             if isinstance(self.dataloaders["train"], StreamingShardDataset):
                 data_config = self.config.data_args
                 ds_state = data_config.input_shards.replace(".yaml", "")
-                with open(f"{ds_state}/rank_{dist.get_rank()}_processed.json", "r") as f:
+                with open(f"{ds_state}/rank_{dist.get_rank()}_processed_{self.config.train_args.wandb_run_name}.json", "r") as f:
                     processed = json.load(f)
 
                 with open(f"{output_dir}/rank_{dist.get_rank()}_processed.json", "w") as f:
