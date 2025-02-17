@@ -30,6 +30,7 @@ class BaseTrainer(metaclass=ABCMeta):
         self.distributed = dist.is_initialized()
         self.print = print_rank_zero if self.distributed else print
         self.dtype = dtype
+        self.best_train_loss = {}
 
         self.profile = config.train_args.profile
         if self.profile:
@@ -489,6 +490,12 @@ class BaseTrainer(metaclass=ABCMeta):
 
                     if step > 0 and train_args.save_every > 0 and step % train_args.save_every == 0:
                         self.save_state(f"{train_args.output_dir}/step_{curr_step}")
+                        for key, value in metrics.items():
+                            scalar_value = torch.mean(value).item() if isinstance(
+                                value, torch.Tensor) else value
+                            if key not in self.best_train_loss:
+                                self.best_train_loss[key] = {}
+                            self.best_train_loss[key][curr_step] = scalar_value
 
                     if self.profile and step >= 10:
                         return
@@ -504,3 +511,10 @@ class BaseTrainer(metaclass=ABCMeta):
         if train_args.num_epochs > 0 and train_args.save_every > 0:
             torch.distributed.barrier()
             self.save_model(f"{train_args.output_dir}/final_model")
+
+        if self.best_train_loss:
+            for key, loss_dict in self.best_train_loss.items():
+                best_step = min(loss_dict, key=loss_dict.get)
+                best_value = loss_dict[best_step]
+                self.print(f"Best {key}: {best_value}")
+                self.print(f"Best {key} step: {best_step}")
