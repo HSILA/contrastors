@@ -76,6 +76,8 @@ class TextTextTrainer(BaseTrainer):
         data_config = config.data_args
         model_args = config.model_args
         gradient_accumulation_steps = train_args.gradient_accumulation_steps
+        if train_args.wandb_run_name is None and train_args.wandb:
+            raise ValueError("wandb_run_name must be set, got None")
         if data_config.streaming:
             train_dataset = StreamingShardDataset(
                 data_config.input_shards,
@@ -90,6 +92,7 @@ class TextTextTrainer(BaseTrainer):
                 weighted_sampling=data_config.weighted_sampling,
                 verbose=data_config.verbose,
                 sample_negatives=data_config.sample_negatives,
+                run_name=train_args.wandb_run_name,
             )
             if train_args.checkpoint is not None:
                 print(f"Loading dataloader state from {train_args.checkpoint}")

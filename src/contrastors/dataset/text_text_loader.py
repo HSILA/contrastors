@@ -48,6 +48,7 @@ class StreamingShardDataset(IterableDataset):
         verbose=False,
         infinite=False,
         sample_negatives=False,
+        run_name=None,
     ):
         self.num_samples_per_shard = {}
         self.max_per_shard = {}
@@ -71,6 +72,7 @@ class StreamingShardDataset(IterableDataset):
         self.verbose = verbose
         self.infinite = infinite
         self.sample_negatives = sample_negatives
+        self.run_name = run_name
 
         if dist.is_initialized():
             self.local_rank = int(os.environ["LOCAL_RANK"])
@@ -103,7 +105,7 @@ class StreamingShardDataset(IterableDataset):
         if not os.path.exists(path):
             os.makedirs(path, exist_ok=True)
 
-        self.path = f"{path}/rank_{self.rank}_processed.json"
+        self.path = f"{path}/rank_{self.rank}_processed_{self.run_name}.json"
         with open(self.path, "w") as f:
             json.dump({path: 0 for path in self.ds_paths}, f, indent=3)
 
