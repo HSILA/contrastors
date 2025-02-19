@@ -490,12 +490,6 @@ class BaseTrainer(metaclass=ABCMeta):
 
                     if step > 0 and train_args.save_every > 0 and step % train_args.save_every == 0:
                         self.save_state(f"{train_args.output_dir}/step_{curr_step}")
-                        for key, value in metrics.items():
-                            scalar_value = torch.mean(value).item() if isinstance(
-                                value, torch.Tensor) else value
-                            if key not in self.best_train_loss:
-                                self.best_train_loss[key] = {}
-                            self.best_train_loss[key][curr_step] = scalar_value
 
                     if self.profile and step >= 10:
                         return
@@ -507,6 +501,12 @@ class BaseTrainer(metaclass=ABCMeta):
                 self.save_model(f"{train_args.output_dir}/epoch_{epoch}_model")
                 if train_args.num_epochs > 1:
                     self.save_state(f"{train_args.output_dir}/epoch_{epoch}")
+                for key, value in metrics.items():
+                    scalar_value = torch.mean(value).item() if isinstance(
+                        value, torch.Tensor) else value
+                    if key not in self.best_train_loss:
+                        self.best_train_loss[key] = {}
+                    self.best_train_loss[key][epoch] = scalar_value
 
         if train_args.num_epochs > 0 and train_args.save_every > 0:
             torch.distributed.barrier()
@@ -514,7 +514,7 @@ class BaseTrainer(metaclass=ABCMeta):
 
         if self.best_train_loss:
             for key, loss_dict in self.best_train_loss.items():
-                best_step = min(loss_dict, key=loss_dict.get)
-                best_value = loss_dict[best_step]
+                best_epoch = min(loss_dict, key=loss_dict.get)
+                best_value = loss_dict[best_epoch]
                 self.print(f"Best {key}: {best_value}")
-                self.print(f"Best {key} step: {best_step}")
+                self.print(f"Best {key} epoch: {best_epoch}")
