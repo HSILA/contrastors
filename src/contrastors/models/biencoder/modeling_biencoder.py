@@ -296,6 +296,6 @@ class BiEncoder(PreTrainedModel):
             trunk_output = self.trunk(input_ids, attention_mask=attention_mask, **kwargs)
         
         embedding = self.process_trunk_output(
-                trunk_output, input_ids, attention_mask, normalize=normalize, binarize=binarize)
+                trunk_output[0], input_ids, attention_mask, normalize=normalize, binarize=binarize)
         
         return {"embedding": embedding}

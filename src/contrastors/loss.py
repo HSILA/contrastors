@@ -95,8 +95,9 @@ def accumulate_gradients(model, inputs, cache, rand_states):
                             trunk_output = model.module.trunk(**inp)
 
                         embedding = model.module.process_trunk_output(
-                            trunk_output.detach().requires_grad_(),
-                            **inp
+                            trunk_output[0].detach().requires_grad_(),
+                            input_ids=inp["input_ids"],
+                            attention_mask=inp["attention_mask"]
                         )
                     else:
                         embedding = model(**inp)["embedding"]
