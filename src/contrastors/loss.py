@@ -82,6 +82,7 @@ def get_chunked_embeddings(model, chunks):
 
 
 def accumulate_gradients(model, inputs, cache, rand_states):
+    frozen = getattr(model.module, "frozen_trunk", False)
     length = len(inputs)
     sync_contexts = [model.no_sync for _ in range(length - 1)] + [nullcontext]
 
@@ -89,7 +90,16 @@ def accumulate_gradients(model, inputs, cache, rand_states):
         with sync_context():
             with state:
                 with torch.autocast("cuda", dtype=torch.bfloat16):
-                    embedding = model(**inp)["embedding"]
+                    if frozen:
+                        with torch.no_grad():
+                            trunk_output = model.module.trunk(**inp)
+
+                        embedding = model.module.process_trunk_output(
+                            trunk_output.detach().requires_grad_(),
+                            **inp
+                        )
+                    else:
+                        embedding = model(**inp)["embedding"]
             surrogate = torch.dot(embedding.flatten(), grad.flatten())
             surrogate.backward()
 

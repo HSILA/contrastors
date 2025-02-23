@@ -263,11 +263,13 @@ class BiEncoder(PreTrainedModel):
         else:
             self.hamming = nn.Identity()
 
-    def forward(self, input_ids, attention_mask=None, is_padded_inputs=True, normalize=True, binarize=False, **kwargs):
-        context = torch.no_grad if self.frozen_trunk else nullcontext
-        with context():
-            trunk_output = self.trunk(input_ids, attention_mask=attention_mask, **kwargs)
-        trunk_output = trunk_output[0]
+    def process_trunk_output(self, trunk_output, input_ids, attention_mask, normalize=True, binarize=False):
+        if isinstance(trunk_output, (tuple, list)):
+            trunk_output = trunk_output[0]
+        elif hasattr(trunk_output, "last_hidden_state"):
+            trunk_output = trunk_output.last_hidden_state
+        else:
+            trunk_output = trunk_output
 
         if self.selector is not None:
             embedding = self.selector(trunk_output, input_ids, attention_mask)
@@ -282,8 +284,18 @@ class BiEncoder(PreTrainedModel):
         embedding = self.proj(embedding)
 
         if binarize:
-            return {"embedding": (embedding > 0).float()}
+            embedding = (embedding > 0).float()
         elif normalize:
-            return {"embedding": F.normalize(embedding, dim=-1)}
-        else:
-            return {"embedding": embedding}
+            embedding = F.normalize(embedding, dim=-1)
+
+        return embedding
+
+    def forward(self, input_ids, attention_mask=None, is_padded_inputs=True, normalize=True, binarize=False, **kwargs):
+        context = torch.no_grad if self.frozen_trunk else nullcontext
+        with context():
+            trunk_output = self.trunk(input_ids, attention_mask=attention_mask, **kwargs)
+        
+        embedding = self.process_trunk_output(
+                trunk_output, input_ids, attention_mask, normalize=normalize, binarize=binarize)
+        
+        return {"embedding": embedding}

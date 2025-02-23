@@ -37,6 +37,8 @@ class TextTextTrainer(BaseTrainer):
                 nomic_encoder=config.nomic_encoder,
                 trainable_logit_scale=config.trainable_logit_scale,
                 hamming=config.hamming,
+                projection_dim=config.projection_dim,
+                freeze=config.freeze,
                 pretrained=config.pretrained,
                 gradient_checkpointing=config.gradient_checkpointing,
             )
@@ -46,6 +48,7 @@ class TextTextTrainer(BaseTrainer):
             model_config = BiEncoderConfig.from_pretrained(config.checkpoint)
             if config.projection_dim is not None:
                 model_config.projection_dim = config.projection_dim
+                model.config.freeze = config.freeze
             if config.gradient_checkpointing:
                 model_config.gradient_checkpointing = True
             model = BiEncoder.from_pretrained(config.pretrained, config=model_config)
