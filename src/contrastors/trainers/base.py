@@ -30,7 +30,7 @@ class BaseTrainer(metaclass=ABCMeta):
         self.distributed = dist.is_initialized()
         self.print = print_rank_zero if self.distributed else print
         self.dtype = dtype
-        self.best_train_loss = {}
+        self.epoch_metrics = {}
 
         self.profile = config.train_args.profile
         if self.profile:
@@ -39,11 +39,6 @@ class BaseTrainer(metaclass=ABCMeta):
 
         seed = config.data_args.seed
         self.set_seed(seed)
-
-        if config.train_args.wandb:
-            self.tracker = self.get_trackers(config)
-        else:
-            self.tracker = None
 
         self.print(json.dumps(config.dict(), indent=3))
 
@@ -73,6 +68,11 @@ class BaseTrainer(metaclass=ABCMeta):
         self.dataloaders = self.get_dataloaders(config)
         self.optimizer = self.get_optimizer(config.train_args, ds_config)
         self.scheduler = self.get_scheduler(config.train_args, self.optimizer, ds_config)
+
+        if config.train_args.wandb:
+            self.tracker = self.get_trackers(config)
+        else:
+            self.tracker = None
 
         if self.deepspeed:
             self.print(f"Setting up deepspeed...")
@@ -126,6 +126,16 @@ class BaseTrainer(metaclass=ABCMeta):
         if self.global_rank == 0:
             self.tracker.log(metrics, step=step)
 
+    def reset_epoch_metrics(self):
+        self.epoch_metrics = {}
+
+    def update_epoch_metrics(self, metrics):
+        for key, value in metrics.items():
+            if key not in self.epoch_metrics:
+                self.epoch_metrics[key] = []
+            else:
+                self.epoch_metrics[key].append(value.detach().cpu())
+
     def initialize_deepspeed(self, rank, ds_config):
         # don't let deepspeed print to stdout
         ds_config["steps_per_print"] = float("inf")
@@ -163,6 +173,18 @@ class BaseTrainer(metaclass=ABCMeta):
                     hyperparams[f"{key}_{k}"] = v
 
             tracker = wandb.init(project=project_name, entity=entity, name=run_name, config=hyperparams)
+            wandb.define_metric('step', hidden=True)
+            wandb.define_metric('epoch', hidden=True)
+            wandb.define_metric('save', hidden=True)
+
+            wandb.define_metric('loss_epoch', step_metric='epoch')
+            wandb.define_metric('loss_save', step_metric='save')
+            wandb.define_metric('lr', step_metric='step')
+            wandb.define_metric('loss', step_metric='step')
+
+            for key in self.dataloaders['train'].dataset.path2prefix:
+                wandb.define_metric(f'accuracy_{key}', step_metric='step')
+                wandb.define_metric(f'loss_{key}', step_metric='step')
 
             if self.num_processes > 1:
                 tracker = DistributedWandbTracker(tracker)
@@ -468,8 +490,10 @@ class BaseTrainer(metaclass=ABCMeta):
                     else:
                         raise TypeError(f"Unexpected loss type: {type(loss)}")
 
+                    self.update_epoch_metrics(metrics)
+
                     if train_args.wandb:
-                        self.log({k: torch.mean(v).item() for k, v in metrics.items()}, step=curr_step)
+                        self.log({**{k: torch.mean(v).item() for k, v in metrics.items()}, 'step': curr_step})
                     else:
                         self.print(f'Loss: { {k: torch.mean(v).item() for k, v in metrics.items()} }')
                         self.print(f"LR: {scheduler.get_last_lr()[0]}")
@@ -486,13 +510,27 @@ class BaseTrainer(metaclass=ABCMeta):
                     # log LR in case something weird happens
                     if step > 0 and step % (train_args.log_lr_every) == 0:
                         if train_args.wandb:
-                            self.log({"lr": scheduler.get_last_lr()[0]}, step=curr_step)
+                            self.log({**{"lr": scheduler.get_last_lr()[0]}, 'step': curr_step})
 
-                    if step > 0 and train_args.save_every > 0 and step % train_args.save_every == 0:
+                    if step > 0 and train_args.save_every > 0 and curr_step % train_args.save_every == 0:
                         self.save_state(f"{train_args.output_dir}/step_{curr_step}")
+                        if train_args.wandb:
+                            self.log({**{f'{k}_save': torch.mean(v).item() for k, v in metrics.items()}, 'save': curr_step})
 
                     if self.profile and step >= 10:
                         return
+            
+            if self.epoch_metrics:
+                epoch_avg_metrics = {}
+                for key, values in self.epoch_metrics.items():
+                    epoch_avg_metrics[f"{key}_epoch"] = torch.mean(torch.stack(values)).item()
+
+            if train_args.wandb:
+                self.log({**epoch_avg_metrics, 'epoch': epoch + 1})
+
+            self.print(f"Epoch {epoch} summary: {epoch_avg_metrics}")
+
+            self.reset_epoch_metrics() 
 
             if val_dataloader and train_args.eval_strategy == "epochs":
                 self.eval_loop(dataloader=val_dataloader, step=curr_step, **model)
@@ -501,20 +539,7 @@ class BaseTrainer(metaclass=ABCMeta):
                 self.save_model(f"{train_args.output_dir}/epoch_{epoch}_model")
                 if train_args.num_epochs > 1:
                     self.save_state(f"{train_args.output_dir}/epoch_{epoch}")
-                for key, value in metrics.items():
-                    scalar_value = torch.mean(value).item() if isinstance(
-                        value, torch.Tensor) else value
-                    if key not in self.best_train_loss:
-                        self.best_train_loss[key] = {}
-                    self.best_train_loss[key][epoch] = scalar_value
 
         if train_args.num_epochs > 0 and train_args.save_every > 0:
             torch.distributed.barrier()
             self.save_model(f"{train_args.output_dir}/final_model")
-
-        if self.best_train_loss:
-            for key, loss_dict in self.best_train_loss.items():
-                best_epoch = min(loss_dict, key=loss_dict.get)
-                best_value = loss_dict[best_epoch]
-                self.print(f"Best {key}: {best_value}")
-                self.print(f"Best {key} epoch: {best_epoch}")

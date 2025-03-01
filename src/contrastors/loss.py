@@ -62,7 +62,8 @@ def clip_loss(
     if tracker is not None:
         # this will only calculate 1/N accuracy where N is the number of gpus
         accuracy = (similarity_query_document.argmax(dim=1) == labels).float().mean()
-        tracker.log({f"accuracy_{dataset}": accuracy.detach().cpu().item()}, step=step)
+        tracker.log({**{f"accuracy_{dataset}": accuracy.detach().cpu().item()}, 'step': step})
+        tracker.log({**{f"loss_{dataset}": loss.detach().cpu().item()}, 'step': step})
 
     return loss
 
