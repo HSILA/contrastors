@@ -178,7 +178,10 @@ class StreamingShardDataset(IterableDataset):
             for file in to_remove:
                 del max_per_file[file]
                 del present_files[file]
-                paths.remove(f"s3://{file}")
+                try:
+                    paths.remove(f"s3://{file}")
+                except:
+                    paths.remove(file)
 
             self.max_per_ds[ds["name"]] = sum(max_per_file.values()) * self.world_size
             self.total_samples += sum(max_per_file.values()) * self.world_size
