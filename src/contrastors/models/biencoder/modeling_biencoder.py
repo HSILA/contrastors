@@ -263,6 +263,17 @@ class BiEncoder(PreTrainedModel):
         else:
             self.hamming = nn.Identity()
 
+        self.using_lora = getattr(config, "use_lora", False) and not getattr(
+            config, "use_fused_kernels", True)
+
+    @property
+    def is_using_peft(self):
+        """Check if the trunk is using PEFT adapters"""
+        try:
+            return hasattr(self.trunk, "peft_config") or hasattr(self.trunk, "base_model") or self.using_lora
+        except Exception:
+            return False
+
     def process_trunk_output(self, trunk_output, input_ids, attention_mask, normalize=True, binarize=False):
         if isinstance(trunk_output, (tuple, list)):
             trunk_output = trunk_output[0]
@@ -293,9 +304,17 @@ class BiEncoder(PreTrainedModel):
     def forward(self, input_ids, attention_mask=None, is_padded_inputs=True, normalize=True, binarize=False, **kwargs):
         context = torch.no_grad if self.frozen_trunk else nullcontext
         with context():
-            trunk_output = self.trunk(input_ids, attention_mask=attention_mask, **kwargs)
-        
+            trunk_output = self.trunk(
+                input_ids=input_ids,
+                attention_mask=attention_mask,
+                **kwargs
+            )
+
         embedding = self.process_trunk_output(
-                trunk_output[0], input_ids, attention_mask, normalize=normalize, binarize=binarize)
-        
+            trunk_output[0] if isinstance(trunk_output, tuple) else trunk_output,
+            input_ids,
+            attention_mask,
+            normalize=normalize,
+            binarize=binarize)
+
         return {"embedding": embedding}

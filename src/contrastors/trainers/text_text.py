@@ -41,8 +41,33 @@ class TextTextTrainer(BaseTrainer):
                 freeze=config.freeze,
                 pretrained=config.pretrained,
                 gradient_checkpointing=config.gradient_checkpointing,
+                use_fused_kernels=config.use_fused_kernels,
+                use_lora=config.use_lora,
+                lora_r=config.lora_r,
+                lora_alpha=config.lora_alpha,
+                lora_dropout=config.lora_dropout,
+                lora_target_modules=config.lora_target_modules,
             )
             model = BiEncoder(config)
+
+            if getattr(config, "use_lora", False) and not config.use_fused_kernels:
+                try:
+                    from peft import LoraConfig, get_peft_model
+
+                    lora_config = LoraConfig(
+                        r=config.lora_r,
+                        lora_alpha=config.lora_alpha,
+                        target_modules=config.lora_target_modules,
+                        lora_dropout=config.lora_dropout,
+                        bias="none",
+                        task_type="FEATURE_EXTRACTION"
+                    )
+
+                    model.trunk = get_peft_model(model.trunk, lora_config)
+                    self.print(f"Applied LoRA to model with config: {lora_config}")
+                except ImportError:
+                    self.print("Failed to import PEFT. Please install it with `pip install peft`")
+                    raise
         else:
             self.print(f"Loading model from {config.checkpoint}")
             model_config = BiEncoderConfig.from_pretrained(config.checkpoint)
@@ -51,7 +76,34 @@ class TextTextTrainer(BaseTrainer):
                 model.config.freeze = config.freeze
             if config.gradient_checkpointing:
                 model_config.gradient_checkpointing = True
+
+            model_config.use_lora = getattr(config, "use_lora", False)
+            if model_config.use_lora:
+                model_config.lora_r = config.lora_r
+                model_config.lora_alpha = config.lora_alpha
+                model_config.lora_dropout = config.lora_dropout
+                model_config.lora_target_modules = config.lora_target_modules
+
             model = BiEncoder.from_pretrained(config.pretrained, config=model_config)
+
+            if getattr(config, "use_lora", False) and not config.use_fused_kernels:
+                try:
+                    from peft import LoraConfig, get_peft_model
+
+                    lora_config = LoraConfig(
+                        r=model_config.lora_r,
+                        lora_alpha=model_config.lora_alpha,
+                        target_modules=model_config.lora_target_modules,
+                        lora_dropout=model_config.lora_dropout,
+                        bias="none",
+                        task_type="FEATURE_EXTRACTION"
+                    )
+
+                    model.trunk = get_peft_model(model.trunk, lora_config)
+                    self.print(f"Applied LoRA to model with config: {lora_config}")
+                except ImportError:
+                    self.print("Failed to import PEFT. Please install it with `pip install peft`")
+                    raise
 
         if self.distributed and not self.deepspeed:
             model = model.to("cuda")

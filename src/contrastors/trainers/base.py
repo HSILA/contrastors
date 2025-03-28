@@ -56,12 +56,14 @@ class BaseTrainer(metaclass=ABCMeta):
         self.model_type = config.model_args.model_type
         self.model = self.get_model(config)
         self.print(f"Model: {self.model}")
-
-        all_models = [model for model in self.model.values()]
-        num_params = 0
-        for model in all_models:
-            if isinstance(model, nn.Module):
-                num_params += sum(p.numel() for p in model.parameters() if p.requires_grad)
+        if config.model_args.use_lora:
+            self.model['model'].print_trainable_parameters()
+        else:
+            all_models = [model for model in self.model.values()]
+            num_params = 0
+            for model in all_models:
+                if isinstance(model, nn.Module):
+                    num_params += sum(p.numel() for p in model.parameters() if p.requires_grad)
 
         self.print(f"Trainable parameters: {num_params:,}")
 
@@ -283,14 +285,38 @@ class BaseTrainer(metaclass=ABCMeta):
     def save_model(self, output_dir):
         if self.global_rank == 0:
             unwrapped = self.unwrap(self.model["model"])
-            if self.deepspeed:
-                # TODO: need to add zero3 support
-                # reduces bloat when saving with deepsped
-                state_dict = clone_tensors_for_torch_save(unwrapped.state_dict())
-            else:
-                state_dict = None
 
-            unwrapped.save_pretrained(output_dir, state_dict=state_dict)
+            is_peft_model = hasattr(unwrapped, "is_using_peft") and unwrapped.is_using_peft
+
+            if is_peft_model:
+                try:
+                    from peft import get_peft_model
+
+                    self.print(f"Saving LoRA model to {output_dir}")
+
+                    adapter_dir = f"{output_dir}/lora_adapters"
+                    os.makedirs(adapter_dir, exist_ok=True)
+
+                    # Save the adapters
+                    if hasattr(unwrapped, 'save_pretrained'):
+                        unwrapped.save_pretrained(adapter_dir)
+
+                    # Save the full model with adapters merged for inference
+                    if hasattr(unwrapped, 'merge_and_unload'):
+                        from copy import deepcopy
+                        merged_model = deepcopy(unwrapped)
+                        merged_model.trunk = merged_model.trunk.merge_and_unload()
+                        merged_model.save_pretrained(output_dir)
+                except Exception as e:
+                    raise e
+
+            else:
+                if self.deepspeed:
+                    state_dict = clone_tensors_for_torch_save(unwrapped.state_dict())
+                else:
+                    state_dict = None
+
+                unwrapped.save_pretrained(output_dir, state_dict=state_dict)
 
     def load_model(self, model_path):
         loaded_model = self.model["model"].load_pretrained(model_path)

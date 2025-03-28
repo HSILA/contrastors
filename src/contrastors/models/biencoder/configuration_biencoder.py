@@ -15,6 +15,11 @@ class BiEncoderConfig(PretrainedConfig):
         hamming=False,
         pretrained=False,
         gradient_checkpointing=False,
+        use_lora=False,
+        lora_r=8,
+        lora_alpha=16,
+        lora_dropout=0.05,
+        lora_target_modules=["Wqkv", "out_proj", "fc11", "fc12"],
         **kwargs,
     ):
         super().__init__(**kwargs)
@@ -29,3 +34,8 @@ class BiEncoderConfig(PretrainedConfig):
         self.hamming = hamming
         self.pretrained = pretrained
         self.gradient_checkpointing = gradient_checkpointing
+        self.use_lora = use_lora
+        self.lora_r = lora_r
+        self.lora_alpha = lora_alpha
+        self.lora_dropout = lora_dropout
+        self.lora_target_modules = lora_target_modules

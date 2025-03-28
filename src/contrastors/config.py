@@ -165,6 +165,12 @@ class ModelArgs(BaseModel):
     ema: Optional[bool] = False
     patch_dropout: Optional[float] = 0.0
     finetune_mlm: Optional[str] = None
+    use_fused_kernels: Optional[bool] = True
+    use_lora: Optional[bool] = False
+    lora_r: Optional[int] = 8
+    lora_alpha: Optional[int] = 16
+    lora_dropout: Optional[float] = 0.05
+    lora_target_modules: Optional[List[str]] = None
 
     @field_validator('logit_scale')
     @classmethod
