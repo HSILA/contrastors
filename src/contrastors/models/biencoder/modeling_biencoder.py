@@ -154,7 +154,7 @@ class MultiHeadAttentionPooling(nn.Module):
 class BiEncoder(PreTrainedModel):
     def __init__(self, config):
         super().__init__(config)
-
+        self.hf = False
         if config.use_fused_kernels:
             print(f"Initializing {config.model_name}, pretrained={config.pretrained}")
             # set default to true for backward compatibility with old models?
@@ -227,6 +227,7 @@ class BiEncoder(PreTrainedModel):
                     self.trunk = NomicBertModel(config=model_config, add_pooling_layer=False)
         else:
             self.trunk = AutoModel.from_pretrained(config.model_name, trust_remote_code=True, add_pooling_layer=False)
+            self.hf = True
 
         if config.freeze:
             self.trunk.eval()
@@ -303,6 +304,12 @@ class BiEncoder(PreTrainedModel):
 
     def forward(self, input_ids, attention_mask=None, is_padded_inputs=True, normalize=True, binarize=False, **kwargs):
         context = torch.no_grad if self.frozen_trunk else nullcontext
+        if self.hf:
+            keys_to_keep = ['position_ids', 'token_type_ids', 'masked_tokens_mask']
+            keys_to_remove = [key for key in list(kwargs.keys()) if key not in keys_to_keep]
+            for key in keys_to_remove:
+                kwargs.pop(key)
+
         with context():
             trunk_output = self.trunk(
                 input_ids=input_ids,

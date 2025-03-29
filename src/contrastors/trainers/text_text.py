@@ -63,7 +63,7 @@ class TextTextTrainer(BaseTrainer):
                         task_type="FEATURE_EXTRACTION"
                     )
 
-                    model.trunk = get_peft_model(model.trunk, lora_config)
+                    model = get_peft_model(model, lora_config)
                     self.print(f"Applied LoRA to model with config: {lora_config}")
                 except ImportError:
                     self.print("Failed to import PEFT. Please install it with `pip install peft`")
@@ -99,7 +99,7 @@ class TextTextTrainer(BaseTrainer):
                         task_type="FEATURE_EXTRACTION"
                     )
 
-                    model.trunk = get_peft_model(model.trunk, lora_config)
+                    model = get_peft_model(model, lora_config)
                     self.print(f"Applied LoRA to model with config: {lora_config}")
                 except ImportError:
                     self.print("Failed to import PEFT. Please install it with `pip install peft`")

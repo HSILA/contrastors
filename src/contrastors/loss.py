@@ -102,6 +102,8 @@ def accumulate_gradients(model, inputs, cache, rand_states):
                         )
                     else:
                         embedding = model(**inp)["embedding"]
+                        if not embedding.requires_grad:
+                            embedding = embedding.detach().requires_grad_()
             surrogate = torch.dot(embedding.flatten(), grad.flatten())
             surrogate.backward()
 

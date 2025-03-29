@@ -57,7 +57,7 @@ class BaseTrainer(metaclass=ABCMeta):
         self.model = self.get_model(config)
         self.print(f"Model: {self.model}")
         if config.model_args.use_lora:
-            self.model['model'].print_trainable_parameters()
+            self.model['model'].module.print_trainable_parameters()
         else:
             all_models = [model for model in self.model.values()]
             num_params = 0
@@ -65,7 +65,7 @@ class BaseTrainer(metaclass=ABCMeta):
                 if isinstance(model, nn.Module):
                     num_params += sum(p.numel() for p in model.parameters() if p.requires_grad)
 
-        self.print(f"Trainable parameters: {num_params:,}")
+            self.print(f"Trainable parameters: {num_params:,}")
 
         self.dataloaders = self.get_dataloaders(config)
         self.optimizer = self.get_optimizer(config.train_args, ds_config)
@@ -305,7 +305,7 @@ class BaseTrainer(metaclass=ABCMeta):
                     if hasattr(unwrapped, 'merge_and_unload'):
                         from copy import deepcopy
                         merged_model = deepcopy(unwrapped)
-                        merged_model.trunk = merged_model.trunk.merge_and_unload()
+                        merged_model = merged_model.merge_and_unload()
                         merged_model.save_pretrained(output_dir)
                 except Exception as e:
                     raise e
