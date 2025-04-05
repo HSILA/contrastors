@@ -290,10 +290,6 @@ class BaseTrainer(metaclass=ABCMeta):
 
             if is_peft_model:
                 try:
-                    from peft import get_peft_model
-
-                    self.print(f"Saving LoRA model to {output_dir}")
-
                     adapter_dir = f"{output_dir}/lora_adapters"
                     os.makedirs(adapter_dir, exist_ok=True)
 

@@ -265,15 +265,11 @@ class BiEncoder(PreTrainedModel):
             self.hamming = nn.Identity()
 
         self.using_lora = getattr(config, "use_lora", False) and not getattr(
-            config, "use_fused_kernels", True)
+            config, "use_fused_kernels")
 
     @property
     def is_using_peft(self):
-        """Check if the trunk is using PEFT adapters"""
-        try:
-            return hasattr(self.trunk, "peft_config") or hasattr(self.trunk, "base_model") or self.using_lora
-        except Exception:
-            return False
+        return self.using_lora
 
     def process_trunk_output(self, trunk_output, input_ids, attention_mask, normalize=True, binarize=False):
         if isinstance(trunk_output, (tuple, list)):
