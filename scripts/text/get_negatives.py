@@ -25,6 +25,7 @@ def parse_args():
     parser.add_argument("--document_key", default="positive_ctxs")
     parser.add_argument("--negatives_key", default="hard_negative_ctxs")
     parser.add_argument("--add_title", action="store_true")
+    parser.add_argument("--keep_negatives", action="store_true")
 
     return parser.parse_args()
 
@@ -65,9 +66,9 @@ def load_dataset(path, query_key, document_key, negatives_key):
                     else:
                         raise ValueError(f"Unknown format for negatives: {negatives}")
 
-                    seen_documents.update([neg[document_key] for neg in negatives])
-
                     documents.extend([neg for neg in negatives if neg[document_key] not in seen_documents])
+
+                    seen_documents.update([neg[document_key] for neg in negatives])
 
                 seen_documents.add(docs)
 
@@ -156,6 +157,7 @@ if __name__ == "__main__":
     scores, indices = knn_neighbors(q_embed, index, args.batch_size, args.k)
 
     for i, data in enumerate(tqdm(dataset)):
+        original_negatives = data.get(args.negatives_key, []).copy()
         query = data[args.query_key]
         inxs = indices[i]
         filtered_inx = []
@@ -189,7 +191,10 @@ if __name__ == "__main__":
                 if len(kept_idxs) == remaining:
                     break
 
-            data["negatives"].extend(kept_idxs)
+            data[args.negatives_key].extend(kept_idxs)
+        if args.negatives_key in data and args.keep_negatives:
+            data[args.negatives_key].extend(original_negatives)
+            data[args.negatives_key] = list(set(data["negatives"]))
 
     metadata = {
         "objective": {"self": [], "paired": [], "triplet": [[args.query_key, args.document_key, args.negatives_key]]}
