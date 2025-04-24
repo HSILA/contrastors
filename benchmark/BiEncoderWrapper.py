@@ -37,7 +37,10 @@ class BiEncoderWrapper(Wrapper):
             )
         else:
             config = BiEncoderConfig(
-                model_name=model_name, encoder=True, pooling="mean"
+                model_name=model_name,
+                encoder=True,
+                pooling="mean",
+                use_fused_kernels=False,
             )
             if rotary_scaling_factor is not None:
                 config.rotary_scaling_factor = rotary_scaling_factor
@@ -71,12 +74,15 @@ class BiEncoderWrapper(Wrapper):
         """
         # Determine the prompt prefix based on the prompt type.
         # default to search_document if input_type and prompt_name are not provided
-        prompt_name = (
-            self.get_prompt_name(self.model_prompts, task_name, prompt_type)
-            or PromptType.passage.value
-        )
+        if self.model_prompts:
+            prompt_name = (
+                self.get_prompt_name(self.model_prompts, task_name, prompt_type)
+                or PromptType.passage.value
+            )
+            prompt = self.model_prompts.get(prompt_name)
+        else:
+            prompt = None
 
-        prompt = self.model_prompts.get(prompt_name)
         task = mteb.get_task(task_name)
 
         # normalization not applied to classification
