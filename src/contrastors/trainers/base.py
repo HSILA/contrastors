@@ -64,13 +64,16 @@ class BaseTrainer(metaclass=ABCMeta):
                 num_params += sum(p.numel() for p in model.parameters() if p.requires_grad)
 
         self.print(f"Trainable parameters: {num_params:,}")
-
+        # For testing Comment this
         self.dataloaders = self.get_dataloaders(config)
         self.optimizer = self.get_optimizer(config.train_args, ds_config)
+        # For testing Comment this
         self.scheduler = self.get_scheduler(config.train_args, self.optimizer, ds_config)
 
         if config.train_args.wandb:
+            # For testing Comment this
             self.tracker = self.get_trackers(config)
+            # self.tracker = None
         else:
             self.tracker = None
 
