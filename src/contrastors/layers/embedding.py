@@ -794,3 +794,36 @@ class DynamicNTKRotaryEmbedding(VarLengthRotaryEmbedding):
                 self._sin_cached = (torch.sin(freqs) * scale).to(dtype)
                 self._cos_k_cached = (torch.cos(freqs) / scale).to(dtype)
                 self._sin_k_cached = (torch.sin(freqs) / scale).to(dtype)
+
+
+def modify_embedding_grad(model, freeze_used: bool):
+    """
+    If freeze_used=True, register a backward‐hook on the input embeddings
+    that zeroes gradients for token IDs 0–1000 and 1001–end.
+    If freeze_used=False, remove that hook (thus unfreezing those rows).
+    
+    Returns the same model.
+    """
+    # unwrap DDP if necessary
+    base_model = model.module if hasattr(model, "module") else model
+    # now grab the word‐embedding layer
+    emb: torch.nn.Embedding = base_model.trunk.embeddings.word_embeddings
+    
+    # our gradient‐masking function
+    def _freeze_ranges(grad):
+        grad = grad.clone()
+        grad[0:1001, :] = 0     # zero out rows 0–1000
+        grad[1001:, :] = 0      # zero out rows 1001–end
+        return grad
+
+    if freeze_used:
+        # don’t double‐register
+        if not hasattr(emb, "_freeze_hook"):
+            handle = emb.weight.register_hook(_freeze_ranges)
+            emb._freeze_hook = handle
+    else:
+        if hasattr(emb, "_freeze_hook"):
+            emb._freeze_hook.remove()
+            del emb._freeze_hook
+
+    return model
