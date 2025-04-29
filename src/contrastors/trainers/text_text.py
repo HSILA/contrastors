@@ -9,6 +9,8 @@ from contrastors.dataset.text_text_loader import StreamingShardDataset, collate_
 from contrastors.distributed import gather_with_grad
 from contrastors.loss import clip_loss, grad_cache_loss
 from contrastors.models import BiEncoder, BiEncoderConfig, LogitScale
+# Added this for the modification of Embedding
+from contrastors.layers.embedding import modify_embedding_grad
 
 from .base import BaseTrainer
 
@@ -29,6 +31,7 @@ class TextTextTrainer(BaseTrainer):
 
     def get_model(self, config):
         config = config.model_args
+        freeze_used=config.freeze_used
         if config.checkpoint is None:
             config = BiEncoderConfig(
                 model_name=config.model_name,
@@ -41,6 +44,7 @@ class TextTextTrainer(BaseTrainer):
                 freeze=config.freeze,
                 pretrained=config.pretrained,
                 gradient_checkpointing=config.gradient_checkpointing,
+                freeze_used=freeze_used
             )
             model = BiEncoder(config)
         else:
@@ -51,8 +55,9 @@ class TextTextTrainer(BaseTrainer):
                 model.config.freeze = config.freeze
             if config.gradient_checkpointing:
                 model_config.gradient_checkpointing = True
+            model_config.freeze_used = freeze_used
             model = BiEncoder.from_pretrained(config.pretrained, config=model_config)
-
+            
         if self.distributed and not self.deepspeed:
             model = model.to("cuda")
             model = torch.nn.parallel.DistributedDataParallel(
@@ -71,7 +76,9 @@ class TextTextTrainer(BaseTrainer):
                     scale,
                     device_ids=[self.process_index],
                 )
-
+        # Here we modify the grad for Embedding layer
+        modify_embedding_grad(model,freeze_used)
+        
         return {"model": model, "logit_scale": scale}
 
     def get_dataloaders(self, config, epoch=0):
@@ -256,3 +263,20 @@ class TextTextTrainer(BaseTrainer):
 
     def eval_loop(self, model, dataloader, step):
         raise NotImplementedError("CLIP Trainer does not support evaluation")
+
+    def test_embedding_freeze(self):
+        """
+        Returns True if the embedding-layer freeze hook is active,
+        False otherwise.
+        """
+        # 0) If you stored your model in a dict, pull it out
+        base_model = self.model["model"].module if isinstance(self.model, dict) else self.model.module
+
+        # 2) Drill into your BiEncoder to grab the word embeddings
+        emb: torch.nn.Embedding = base_model.trunk.embeddings.word_embeddings
+
+        # 3) Check for the hook attribute
+        is_frozen = hasattr(emb, "_freeze_hook")
+        print(f"Embedding freeze hook is {'ACTIVE' if is_frozen else 'INACTIVE'}.")
+        return is_frozen
+        
