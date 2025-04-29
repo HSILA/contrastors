@@ -1,6 +1,3 @@
-**README.md**
-
----
 
 ## Dummy Test Run
 
@@ -40,8 +37,3 @@ For a lightweight dummy execution, you may need to comment out certain resource-
    ```
 
 Commenting out these sections ensures the dummy script runs quickly, focusing only on a minimal forward/backward sanity check.
-
----
-
-*Feel free to adjust the commented lines based on your specific implementation details.*
-
