@@ -265,18 +265,65 @@ class TextTextTrainer(BaseTrainer):
         raise NotImplementedError("CLIP Trainer does not support evaluation")
 
     def test_embedding_freeze(self):
-        """
-        Returns True if the embedding-layer freeze hook is active,
-        False otherwise.
-        """
-        # 0) If you stored your model in a dict, pull it out
-        base_model = self.model["model"].module if isinstance(self.model, dict) else self.model.module
+        import torch
+        import torch.nn as nn
+        import torch.nn.functional as F
+        from torch.optim import SGD
+        from torch.cuda.amp import autocast
 
-        # 2) Drill into your BiEncoder to grab the word embeddings
-        emb: torch.nn.Embedding = base_model.trunk.embeddings.word_embeddings
+        # 1) unwrap DDP/DataParallel if needed
+        model_obj = self.model["model"] if isinstance(self.model, dict) else self.model
+        base = model_obj.module if hasattr(model_obj, "module") else model_obj
+        base.train()
 
-        # 3) Check for the hook attribute
-        is_frozen = hasattr(emb, "_freeze_hook")
-        print(f"Embedding freeze hook is {'ACTIVE' if is_frozen else 'INACTIVE'}.")
-        return is_frozen
-        
+        device = next(base.parameters()).device
+        # 2) make sure all base params are trainable
+        for p in base.parameters():
+            p.requires_grad = True
+
+        # 3) grab & snapshot the embedding weights
+        emb = base.trunk.embeddings.word_embeddings
+        old_emb_w = emb.weight.data.clone()
+
+        # 4) build a tiny CLS‐based classification head
+        head = nn.Linear(768, 2).to(device)
+        for p in head.parameters():
+            p.requires_grad = True
+
+        input_ids      = torch.tensor([[0, 50, 150, 500, 1000, 20000]], device=device)        # shape [1, seq_len]
+        attention_mask = torch.ones_like(input_ids)
+        labels         = torch.tensor([0], device=device)               # one label
+
+        # 6) optimizer over base + head
+        optimizer = SGD(list(base.parameters()) + list(head.parameters()), lr=1.0)
+        optimizer.zero_grad()
+
+        # 7) forward + loss under fp16 autocast for FlashAttention
+        with autocast( dtype=torch.float16):
+            emb_out = base(
+                input_ids=input_ids,
+                attention_mask=attention_mask,
+                normalize=False
+            )["embedding"]                          # [1, hidden_size]
+            logits = head(emb_out)                   # [1, 2]
+            loss = F.cross_entropy(logits, labels)
+
+        # 8) backward & step
+        loss.backward()
+        optimizer.step()
+
+        # 9) snapshot embedding **after** update
+        new_emb_w = emb.weight.data
+
+        # 10) compute per‐row movement
+        diffs = (new_emb_w - old_emb_w).abs().sum(dim=1)
+
+        # 11) report on both frozen & unfrozen token IDs
+        check_ids = [0, 50, 150, 500, 1000, 20000]
+        result = {}
+        for tok in check_ids:
+            moved = diffs[tok].item() > 0.0
+            print(f"Token {tok:>5}: {'CHANGED' if moved else 'UNCHANGED'} (Δ={diffs[tok]:.6f})")
+            result[tok] = moved
+
+        return result

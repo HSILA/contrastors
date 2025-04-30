@@ -812,7 +812,7 @@ def modify_embedding_grad(model, freeze_used: bool):
     # our gradient‐masking function
     def _freeze_ranges(grad):
         grad = grad.clone()
-        grad[0:1001, :] = 0     # zero out rows 0–1000
+        grad[0:1, :] = 0     # zero out rows 0–1000
         grad[1001:, :] = 0      # zero out rows 1001–end
         return grad
 
