@@ -796,14 +796,7 @@ class DynamicNTKRotaryEmbedding(VarLengthRotaryEmbedding):
                 self._sin_k_cached = (torch.sin(freqs) / scale).to(dtype)
 
 
-def modify_embedding_grad(model, freeze_used: bool):
-    """
-    If freeze_used=True, register a backward‐hook on the input embeddings
-    that zeroes gradients for token IDs 0–1000 and 1001–end.
-    If freeze_used=False, remove that hook (thus unfreezing those rows).
-    
-    Returns the same model.
-    """
+def modify_trainables(model, trainable_params: str):
     # unwrap DDP if necessary
     base_model = model.module if hasattr(model, "module") else model
     # now grab the word‐embedding layer
@@ -816,14 +809,34 @@ def modify_embedding_grad(model, freeze_used: bool):
         grad[1001:, :] = 0      # zero out rows 1001–end
         return grad
 
-    if freeze_used:
-        # don’t double‐register
+    if 'unused_only' in trainable_params:
+        # Freeze everything
+        for param in base_model.parameters():
+            param.requires_grad = False
+
+        # 2. Un-freeze only the word_embeddings layer
+        for param in base_model.trunk.embeddings.word_embeddings.parameters():
+            param.requires_grad = True
+        print('rest of the model is now frozen')
+        # 3. Register the hook
         if not hasattr(emb, "_freeze_hook"):
             handle = emb.weight.register_hook(_freeze_ranges)
             emb._freeze_hook = handle
-    else:
+            print('embedding used is now frozen.')
+        
+
+    if 'unused_and_rest' in trainable_params:
+        # Register the hook
+        if not hasattr(emb, "_freeze_hook"):
+            handle = emb.weight.register_hook(_freeze_ranges)
+            emb._freeze_hook = handle
+            print('embedding used is now frozen.')
+    if 'all' in trainable_params:
         if hasattr(emb, "_freeze_hook"):
             emb._freeze_hook.remove()
             del emb._freeze_hook
-
+        # for param in base_model.parameters():
+        #     param.requires_grad = True
+    trainable_params = sum(p.numel() for p in base_model.parameters() if p.requires_grad)
+    print(f"Number of trainable parameters: {trainable_params}")
     return model

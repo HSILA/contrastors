@@ -55,7 +55,7 @@ def main(config, dtype):
 
     trainer = trainer_cls(config, dtype)
     # trainer.train()
-    print(trainer.test_embedding_freeze())
+    # print(trainer.test_embedding_freeze())
 
 
 if __name__ == "__main__":

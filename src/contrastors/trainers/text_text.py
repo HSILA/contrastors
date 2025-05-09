@@ -10,7 +10,7 @@ from contrastors.distributed import gather_with_grad
 from contrastors.loss import clip_loss, grad_cache_loss
 from contrastors.models import BiEncoder, BiEncoderConfig, LogitScale
 # Added this for the modification of Embedding
-from contrastors.layers.embedding import modify_embedding_grad
+from contrastors.layers.embedding import modify_trainables
 
 from .base import BaseTrainer
 
@@ -31,7 +31,7 @@ class TextTextTrainer(BaseTrainer):
 
     def get_model(self, config):
         config = config.model_args
-        freeze_used=config.freeze_used
+        trainable_params=config.trainable_params
         if config.checkpoint is None:
             config = BiEncoderConfig(
                 model_name=config.model_name,
@@ -44,7 +44,7 @@ class TextTextTrainer(BaseTrainer):
                 freeze=config.freeze,
                 pretrained=config.pretrained,
                 gradient_checkpointing=config.gradient_checkpointing,
-                freeze_used=freeze_used
+                trainable_params=trainable_params
             )
             model = BiEncoder(config)
         else:
@@ -55,7 +55,7 @@ class TextTextTrainer(BaseTrainer):
                 model.config.freeze = config.freeze
             if config.gradient_checkpointing:
                 model_config.gradient_checkpointing = True
-            model_config.freeze_used = freeze_used
+            model_config.trainable_params = trainable_params
             model = BiEncoder.from_pretrained(config.pretrained, config=model_config)
             
         if self.distributed and not self.deepspeed:
@@ -77,7 +77,7 @@ class TextTextTrainer(BaseTrainer):
                     device_ids=[self.process_index],
                 )
         # Here we modify the grad for Embedding layer
-        modify_embedding_grad(model,freeze_used)
+        modify_trainables(model,trainable_params)
         
         return {"model": model, "logit_scale": scale}
 
@@ -278,8 +278,8 @@ class TextTextTrainer(BaseTrainer):
 
         device = next(base.parameters()).device
         # 2) make sure all base params are trainable
-        for p in base.parameters():
-            p.requires_grad = True
+        # for p in base.parameters():
+        #     p.requires_grad = True
 
         # 3) grab & snapshot the embedding weights
         emb = base.trunk.embeddings.word_embeddings
@@ -325,5 +325,6 @@ class TextTextTrainer(BaseTrainer):
             moved = diffs[tok].item() > 0.0
             print(f"Token {tok:>5}: {'CHANGED' if moved else 'UNCHANGED'} (Δ={diffs[tok]:.6f})")
             result[tok] = moved
-
+        trainable_params = sum(p.numel() for p in base_model.parameters() if p.requires_grad)
+        print(f"Number of trainable parameters: {trainable_params}")
         return result

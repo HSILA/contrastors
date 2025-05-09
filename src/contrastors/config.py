@@ -165,7 +165,7 @@ class ModelArgs(BaseModel):
     ema: Optional[bool] = False
     patch_dropout: Optional[float] = 0.0
     finetune_mlm: Optional[str] = None
-    freeze_used: Optional[bool] = False
+    trainable_params: Optional[str] = 'all'
 
     @field_validator('logit_scale')
     @classmethod
