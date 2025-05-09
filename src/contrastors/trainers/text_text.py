@@ -325,6 +325,6 @@ class TextTextTrainer(BaseTrainer):
             moved = diffs[tok].item() > 0.0
             print(f"Token {tok:>5}: {'CHANGED' if moved else 'UNCHANGED'} (Δ={diffs[tok]:.6f})")
             result[tok] = moved
-        trainable_params = sum(p.numel() for p in base_model.parameters() if p.requires_grad)
+        trainable_params = sum(p.numel() for p in base.parameters() if p.requires_grad)
         print(f"Number of trainable parameters: {trainable_params}")
         return result
