@@ -31,7 +31,6 @@ class TextTextTrainer(BaseTrainer):
 
     def get_model(self, config):
         config = config.model_args
-        trainable_params=config.trainable_params
         if config.checkpoint is None:
             config = BiEncoderConfig(
                 model_name=config.model_name,
@@ -44,7 +43,7 @@ class TextTextTrainer(BaseTrainer):
                 freeze=config.freeze,
                 pretrained=config.pretrained,
                 gradient_checkpointing=config.gradient_checkpointing,
-                trainable_params=trainable_params
+                trainable_params=config.trainable_params
             )
             model = BiEncoder(config)
         else:
@@ -55,7 +54,7 @@ class TextTextTrainer(BaseTrainer):
                 model.config.freeze = config.freeze
             if config.gradient_checkpointing:
                 model_config.gradient_checkpointing = True
-            model_config.trainable_params = trainable_params
+            model_config.trainable_params = config.trainable_params
             model = BiEncoder.from_pretrained(config.pretrained, config=model_config)
             
         if self.distributed and not self.deepspeed:
@@ -76,8 +75,8 @@ class TextTextTrainer(BaseTrainer):
                     scale,
                     device_ids=[self.process_index],
                 )
-        # Here we modify the grad for Embedding layer
-        modify_trainables(model,trainable_params)
+        if config.trainable_params != 'all':
+            modify_trainables(model, config.trainable_params)
         
         return {"model": model, "logit_scale": scale}
 

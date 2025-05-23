@@ -172,12 +172,26 @@ class ModelArgs(BaseModel):
     def set_logit_scale(cls, scale):
         return scale or 1 / 0.07
 
+    @field_validator('trainable_params')
+    @classmethod
+    def validate_trainable_params(cls, param):
+        if param not in ['all', 'unused_only', 'unused_and_rest']:
+            raise ValueError(f"trainable_params must be one of 'all', 'unused_only', 'unused_and_rest', got {param}")
+        return param
+
     @field_validator('model_type')
     @classmethod
     def validate_model_type(cls, model_type):
         if model_type not in ["encoder", "mlm", "glue", "image_text", "locked_text"]:
             raise ValueError(f"Model type {model_type} not found in model registry")
         return model_type
+
+    @model_validator(mode="after")
+    def validate_freeze_and_trainable_params(self):
+        # If the model is frozen, trainable_params must be 'all'
+        if self.freeze and self.trainable_params != 'all':
+            raise ValueError("When freeze=True, trainable_params must be 'all'. Cannot use partial embedding freezing with a fully frozen model.")
+        return self
 
 
 class AugmentationCfg(BaseModel):
