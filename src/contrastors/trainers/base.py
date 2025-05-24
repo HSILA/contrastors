@@ -306,7 +306,7 @@ class BaseTrainer(metaclass=ABCMeta):
 
         else:
             self.print(f"Loading model from {input_dir}/model")
-            self.model["model"] = self.load_model(f"{input_dir}/model")
+            # self.model["model"] = self.load_model(f"{input_dir}/model")
 
             self.print(f"Loading optimizer and scheduler state from {input_dir}/optimizer.pt")
             self.optimizer.load_state_dict(torch.load(f"{input_dir}/optimizer.pt"))
