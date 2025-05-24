@@ -212,23 +212,25 @@ class StreamingShardDataset(IterableDataset):
         2. rewrite current_processed to `self.path
         3. remove all that have been processed from self.ds_paths
         """
-        with open(f"{path}/rank_{self.rank}_processed.json") as f:
+        with open(f"{path}/rank_{self.rank}_processed_{self.run_name}.json") as f:
             processed = json.load(f)
 
         # overwrite the current processed
         with open(self.path, "w") as f:
             json.dump(processed, f, indent=3)
 
-        to_remove = []
+        current_paths = []
+        # current paths is what we sample from so we need to remove all files that we have exceeded
+        # BUT don't update ds_paths as it stores the original full list of paths
         for path in self.ds_paths:
-            if processed[path] >= self.max_per_shard[path]:
+            if processed[path] >= self.max_per_shard[path.replace("s3://", "")]:
                 print(
                     f"Rank: {self.rank} has already processed {processed[path]} samples from {path}, removing from paths"
                 )
-                to_remove.append(path)
+            else:
+                current_paths.append(path)
 
-        for path in to_remove:
-            self.ds_paths.remove(path)
+        self.current_paths = current_paths
 
     def __len__(self):
         return self.total_samples
