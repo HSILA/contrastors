@@ -44,6 +44,7 @@ class TextTextTrainer(BaseTrainer):
                 loaded_config.gradient_checkpointing = True
             loaded_config.trainable_params = model_config.trainable_params
             model = BiEncoder.from_pretrained(model_config.checkpoint, config=loaded_config)
+            config = loaded_config
 
         if self.distributed and not self.deepspeed:
             model = model.to("cuda")
