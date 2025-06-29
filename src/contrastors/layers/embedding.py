@@ -824,6 +824,7 @@ def modify_trainables(model, trainable_params: str):
     def _freeze_ranges(grad):
         grad = grad.clone()
         # zero out special tokens: PAD(0), UNK(100), CLS(101), SEP(102), MASK(103)
+        # For CLS pooling, don't zero out the CLS token gradient
         grad[0:1, :] = 0       # PAD token
         grad[100:104, :] = 0   # UNK, CLS, SEP, MASK tokens
         grad[999:, :] = 0      # tokens that are not unused (999 onwards)
