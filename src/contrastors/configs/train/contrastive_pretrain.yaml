@@ -37,7 +37,6 @@ model_args:
   model_name: "nomic-ai/nomic-bert-2048"
   pretrained: true
   gradient_checkpointing: false
-  trainable_params: 'unused_only'
 
 data_args:
   input_shards: "configs/data/contrastive_pretrain.yaml"
