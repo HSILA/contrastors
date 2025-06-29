@@ -794,3 +794,70 @@ class DynamicNTKRotaryEmbedding(VarLengthRotaryEmbedding):
                 self._sin_cached = (torch.sin(freqs) * scale).to(dtype)
                 self._cos_k_cached = (torch.cos(freqs) / scale).to(dtype)
                 self._sin_k_cached = (torch.sin(freqs) / scale).to(dtype)
+
+
+def modify_trainables(model, trainable_params: str):
+    """
+    Modifies which parameters of the model are trainable based on the provided strategy.
+    
+    Args:
+        model: The model whose parameters need to be modified
+        trainable_params: Strategy for training parameters
+                         'all': Train all parameters
+                         'unused_only': Only train unused token embeddings (tokens 1-99, 104-998)
+                         'unused_and_rest': Train all parameters, but freeze special tokens and used tokens in embedding layer
+    
+    Returns:
+        model: The model with modified trainable parameters
+    
+    Raises:
+        ValueError: If trainable_params is not one of the allowed values
+    """
+    if trainable_params not in ['all', 'unused_only', 'unused_and_rest']:
+        raise ValueError(f"trainable_params must be one of 'all', 'unused_only', 'unused_and_rest', got {trainable_params}")
+    
+    base_model = model.module if hasattr(model, "module") else model
+    # now grab the word‐embedding layer
+    emb: torch.nn.Embedding = base_model.trunk.embeddings.word_embeddings
+    
+        
+    def _freeze_ranges(grad):
+        grad = grad.clone()
+        # zero out special tokens: PAD(0), UNK(100), CLS(101), SEP(102), MASK(103)
+        # For CLS pooling, don't zero out the CLS token gradient
+        grad[0:1, :] = 0       # PAD token
+        grad[100:104, :] = 0   # UNK, CLS, SEP, MASK tokens
+        grad[999:, :] = 0      # tokens that are not unused (999 onwards)
+        return grad
+
+    if trainable_params == 'unused_only':
+        # Freeze everything
+        for param in base_model.parameters():
+            param.requires_grad = False
+
+        # 2. Un-freeze only the word_embeddings layer
+        for param in base_model.trunk.embeddings.word_embeddings.parameters():
+            param.requires_grad = True
+        print('rest of the model is now frozen')
+        # 3. Register the hook
+        if not hasattr(emb, "_freeze_hook"):
+            handle = emb.weight.register_hook(_freeze_ranges)
+            emb._freeze_hook = handle
+            print('embedding used is now frozen.')
+        
+
+    if trainable_params == 'unused_and_rest':
+        # Register the hook
+        if not hasattr(emb, "_freeze_hook"):
+            handle = emb.weight.register_hook(_freeze_ranges)
+            emb._freeze_hook = handle
+            print('embedding used is now frozen.')
+    if trainable_params == 'all':
+        if hasattr(emb, "_freeze_hook"):
+            emb._freeze_hook.remove()
+            del emb._freeze_hook
+        for param in base_model.parameters():
+            param.requires_grad = True
+    trainable_params_count = sum(p.numel() for p in base_model.parameters() if p.requires_grad)
+    print(f"Number of trainable parameters: {trainable_params_count}")
+    return model

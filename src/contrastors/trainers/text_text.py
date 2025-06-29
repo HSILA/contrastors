@@ -9,6 +9,8 @@ from contrastors.dataset.text_text_loader import StreamingShardDataset, collate_
 from contrastors.distributed import gather_with_grad
 from contrastors.loss import clip_loss, grad_cache_loss
 from contrastors.models import BiEncoder, BiEncoderConfig, LogitScale
+# Added this for the modification of Embedding
+from contrastors.layers.embedding import modify_trainables
 
 from .base import BaseTrainer
 
@@ -28,30 +30,21 @@ class TextTextTrainer(BaseTrainer):
             self.matryoshka_loss_weights = None
 
     def get_model(self, config):
-        config = config.model_args
-        if config.checkpoint is None:
-            config = BiEncoderConfig(
-                model_name=config.model_name,
-                pooling=config.pooling,
-                logit_scale=config.logit_scale,
-                nomic_encoder=config.nomic_encoder,
-                trainable_logit_scale=config.trainable_logit_scale,
-                hamming=config.hamming,
-                projection_dim=config.projection_dim,
-                freeze=config.freeze,
-                pretrained=config.pretrained,
-                gradient_checkpointing=config.gradient_checkpointing,
-            )
+        model_config = config.model_args
+        if model_config.checkpoint is None:
+            model_config_dict = model_config.dict()
+            config = BiEncoderConfig(**model_config_dict)
             model = BiEncoder(config)
         else:
-            self.print(f"Loading model from {config.checkpoint}")
-            model_config = BiEncoderConfig.from_pretrained(config.checkpoint)
-            if config.projection_dim is not None:
-                model_config.projection_dim = config.projection_dim
-                model.config.freeze = config.freeze
-            if config.gradient_checkpointing:
-                model_config.gradient_checkpointing = True
-            model = BiEncoder.from_pretrained(config.pretrained, config=model_config)
+            self.print(f"Loading model from {model_config.checkpoint}")
+            loaded_config = BiEncoderConfig.from_pretrained(model_config.checkpoint)
+            if model_config.projection_dim is not None:
+                loaded_config.projection_dim = model_config.projection_dim
+            if model_config.gradient_checkpointing:
+                loaded_config.gradient_checkpointing = True
+            loaded_config.trainable_params = model_config.trainable_params
+            model = BiEncoder.from_pretrained(model_config.checkpoint, config=loaded_config)
+            config = loaded_config
 
         if self.distributed and not self.deepspeed:
             model = model.to("cuda")
@@ -71,6 +64,8 @@ class TextTextTrainer(BaseTrainer):
                     scale,
                     device_ids=[self.process_index],
                 )
+        if config.trainable_params != 'all':
+            modify_trainables(model, config.trainable_params)
 
         return {"model": model, "logit_scale": scale}
 
@@ -98,8 +93,9 @@ class TextTextTrainer(BaseTrainer):
                 run_name=train_args.wandb_run_name,
             )
             if train_args.checkpoint is not None:
-                print(f"Loading dataloader state from {train_args.checkpoint}")
-                train_dataset.load_state(train_args.checkpoint)
+                dataset_states_path = data_config.input_shards.replace(".yaml", "")
+                print(f"Loading dataloader state from {dataset_states_path}")
+                train_dataset.load_state(dataset_states_path)
 
             train_dataloader = DataLoader(train_dataset, batch_size=1, collate_fn=collate_fn, num_workers=0)
             self.print(f"Len of train_dataloader: {len(train_dataset)}")

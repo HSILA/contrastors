@@ -15,6 +15,7 @@ class BiEncoderConfig(PretrainedConfig):
         hamming=False,
         pretrained=False,
         gradient_checkpointing=False,
+        trainable_params='all',
         **kwargs,
     ):
         super().__init__(**kwargs)
@@ -29,3 +30,4 @@ class BiEncoderConfig(PretrainedConfig):
         self.hamming = hamming
         self.pretrained = pretrained
         self.gradient_checkpointing = gradient_checkpointing
+        self.trainable_params = trainable_params

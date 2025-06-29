@@ -122,9 +122,9 @@ class BaseTrainer(metaclass=ABCMeta):
         with self._goes_first(self.process_index == 0):
             yield
 
-    def log(self, metrics, step=None):
+    def log(self, metrics):
         if self.global_rank == 0:
-            self.tracker.log(metrics, step=step)
+            self.tracker.log(metrics)
 
     def reset_epoch_metrics(self):
         self.epoch_metrics = {}
@@ -303,7 +303,7 @@ class BaseTrainer(metaclass=ABCMeta):
 
         else:
             self.print(f"Loading model from {input_dir}/model")
-            self.model["model"] = self.load_model(f"{input_dir}/model")
+            # self.model["model"] = self.load_model(f"{input_dir}/model")
 
             self.print(f"Loading optimizer and scheduler state from {input_dir}/optimizer.pt")
             self.optimizer.load_state_dict(torch.load(f"{input_dir}/optimizer.pt"))
@@ -403,6 +403,7 @@ class BaseTrainer(metaclass=ABCMeta):
     def train(self):
         train_args = self.config.train_args
         data_config = self.config.data_args
+        model_args = self.config.model_args
 
         dataloaders = self.dataloaders
         train_dataloader = dataloaders["train"]
@@ -415,11 +416,14 @@ class BaseTrainer(metaclass=ABCMeta):
         total_num_steps = int(self.total_num_steps)
         gradient_accumulation_steps = train_args.gradient_accumulation_steps
 
-        if train_args.checkpoint:
-            self.load_state(train_args.checkpoint)
+        if train_args.checkpoint or model_args.checkpoint:                
             # checkpoint will be something like /root/contrastors-dev/src/contrastors/ckpts/unlit-search-query-no-resampled-dfn-2b-vitb-65k-3-epoch/epoch_0
             # split by / and get the last element, then split by _ and get the last element
-            start_epoch = int(train_args.checkpoint.split("/")[-1].split("_")[-1])
+            if train_args.checkpoint:
+                self.load_state(train_args.checkpoint)
+                start_epoch = int(train_args.checkpoint.split("/")[-1].split("_")[-1])
+            elif (not train_args.checkpoint) and model_args.checkpoint:
+                start_epoch = int(model_args.checkpoint.split("/")[-1].split("_")[-2])
         else:
             start_epoch = 0
 
@@ -519,7 +523,7 @@ class BaseTrainer(metaclass=ABCMeta):
 
                     if self.profile and step >= 10:
                         return
-            
+
             if self.epoch_metrics:
                 epoch_avg_metrics = {}
                 for key, values in self.epoch_metrics.items():
@@ -530,7 +534,7 @@ class BaseTrainer(metaclass=ABCMeta):
 
             self.print(f"Epoch {epoch} summary: {epoch_avg_metrics}")
 
-            self.reset_epoch_metrics() 
+            self.reset_epoch_metrics()
 
             if val_dataloader and train_args.eval_strategy == "epochs":
                 self.eval_loop(dataloader=val_dataloader, step=curr_step, **model)
