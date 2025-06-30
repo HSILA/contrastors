@@ -54,3 +54,29 @@ class ChemRxivNC1(AbsTaskRetrieval):
         sample_creation=None,
         bibtex_citation=None,
     )
+
+
+class ChemRxivRetrieval(AbsTaskRetrieval):
+    metadata = TaskMetadata(
+        name="ChemRxivRetrieval",
+        dataset={
+            "path": "BASF-AI/ChemRxivRetrieval",
+            "revision": "8fae72a2c75530aaaac6920a02622490d923ca98",
+        },
+        description="ChemRxiv paragraphs retrieval, with 5000 LLM-generated querues and 69457 corpus size",
+        reference="https://huggingface.co/datasets/BASF-AI/ChemRxiv-Paragraphs",
+        type="Retrieval",
+        category="s2p",
+        modalities=["text"],
+        eval_splits=["test"],
+        eval_langs=["eng-Latn"],
+        main_score="ndcg_at_10",
+        date=None,
+        domains=None,
+        task_subtypes=None,
+        license=None,
+        annotations_creators=None,
+        dialect=None,
+        sample_creation=None,
+        bibtex_citation=None,
+    )

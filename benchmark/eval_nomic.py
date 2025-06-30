@@ -1,7 +1,7 @@
 import os
 
 from BiEncoderWrapper import BiEncoderWrapper
-from tasks import ChemBenchRetrieval, ChemRxivNC1
+from tasks import ChemRxivRetrieval
 from mteb.overview import TASKS_REGISTRY
 from mteb.model_meta import ModelMeta
 from mteb.encoder_interface import PromptType
@@ -18,8 +18,7 @@ import json
 import re
 import sys
 
-TASKS_REGISTRY["ChemBenchRetrieval"] = ChemBenchRetrieval
-TASKS_REGISTRY["ChemRxivNC1"] = ChemRxivNC1
+TASKS_REGISTRY["ChemRxivRetrieval"] = ChemRxivRetrieval
 
 
 def read_score(file):
@@ -111,13 +110,13 @@ def meta_builder(
     )
 
 
-def get_eval_paths(checkpoint_path: str) -> list[str]:
+def get_eval_paths(checkpoint_path: str, mode: str = "both") -> list[str]:
     folders = os.listdir(checkpoint_path)
     eval_paths = []
     for folder in folders:
-        if "epoch" in folder and folder.endswith("model"):
+        if "epoch" in folder and folder.endswith("model") and mode != "step":
             eval_paths.append(os.path.join(checkpoint_path, folder))
-        if "step" in folder:
+        if "step" in folder and mode != "epoch":
             eval_paths.append(os.path.join(checkpoint_path, folder, "model"))
     return eval_paths
 
@@ -132,9 +131,15 @@ if __name__ == "__main__":
     parser.add_argument("--no_prefix", action="store_true")
     parser.add_argument("--batch_size", type=int, default=16)
     parser.add_argument(
+        "--mode",
+        type=str,
+        choices=["both", "epoch", "step"],
+        default="both",
+    )
+    parser.add_argument(
         "--benchmark",
         type=str,
-        choices=["one-hop", "chemrxivp-ccby-1", "chemteb", "mteb"],
+        choices=["chemrxiv", "chemteb", "mteb-v2"],
         default="chemteb",
     )
 
@@ -143,6 +148,10 @@ if __name__ == "__main__":
     if args.checkpoint_path in [
         "nomic-ai/nomic-embed-text-v1-unsupervised",
         "nomic-ai/nomic-embed-text-v1",
+        "BASF-AI/ChEmbed-vanilla",
+        "BASF-AI/ChEmbed-full",
+        "BASF-AI/ChEmbed-plug",
+        "BASF-AI/ChEmbed-prog",
     ]:
         run_name = args.checkpoint_path
         eval_paths = [run_name]
@@ -153,7 +162,7 @@ if __name__ == "__main__":
         is_local = False
     else:
         run_name = args.checkpoint_path
-        eval_paths = get_eval_paths(args.checkpoint_path)
+        eval_paths = get_eval_paths(args.checkpoint_path, args.mode)
         run_name = os.path.basename(os.path.normpath(args.checkpoint_path))
         print(f"Running benchmark for {run_name}")
         results_path = os.path.join(args.output_path, run_name)
@@ -176,12 +185,10 @@ if __name__ == "__main__":
 
     if args.benchmark == "chemteb":
         bench = mteb.get_benchmark("ChemTEB")
-    elif args.benchmark == "mteb":
-        bench = mteb.get_benchmark("MTEB(eng, v1)")
-    elif args.benchmark == "one-hop":
-        bench = [ChemBenchRetrieval()]
-    elif args.benchmark == "chemrxivp-ccby-1":
-        bench = [ChemRxivNC1()]
+    elif args.benchmark == "mteb-v2":
+        bench = mteb.get_benchmark("MTEB(eng, v2)")
+    elif args.benchmark == "chemrxiv":
+        bench = [ChemRxivRetrieval()]
 
     now = datetime.now()
     for eval_model in tqdm.tqdm(eval_paths):
@@ -195,7 +202,11 @@ if __name__ == "__main__":
         if hasattr(args, "no_prefix") and args.no_prefix:
             meta_builder_kwargs["use_prefix"] = False
         model_meta = meta_builder(**meta_builder_kwargs)
-        model = model_meta.loader()
+        try:
+            model = model_meta.loader()
+        except:
+            print(f"Failed loading model for {eval_model}")
+            continue
         model.mteb_model_meta = model_meta
 
         evaluation = mteb.MTEB(tasks=bench)
@@ -203,6 +214,7 @@ if __name__ == "__main__":
             model,
             encode_kwargs={"batch_size": args.batch_size},
             output_folder=results_path,
+            overwrite_results=args.overwrite,
         )
 
     elapsed = datetime.now() - now
